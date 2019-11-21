@@ -66,33 +66,39 @@ class Code2VecModel(Code2VecModelBase):
             [context_after_dense, context_valid_mask])
 
         # "Decode": Now we use another dense layer to get the target word embedding from each code vector.
-        target_index = Dense(
-            self.vocabs.target_vocab.size, use_bias=False, activation='softmax', name='target_index')(code_vectors)
+        #Esta es la que da la probabilidad de que sea o no un determinado nombre. Por eso el primer parametro es la cantidad de nombres distintos de metodos que hay en el vocabulario.
+        #target_index = Dense(self.vocabs.target_vocab.size, use_bias=False, activation='softmax', name='target_index')(code_vectors)
+        #Ideally this should be our definition: target_index = Dense(1, use_bias=False, activation='sigmoid', name='target_index')(code_vectors)
+        target_index = Dense(3, use_bias=False, activation='softmax', name='target_index')(code_vectors)
 
         # Wrap the layers into a Keras model, using our subtoken-metrics and the CE loss.
         inputs = [path_source_token_input, path_input, path_target_token_input, context_valid_mask]
         self.keras_train_model = keras.Model(inputs=inputs, outputs=target_index)
-
+        keras.utils.plot_model(self.keras_train_model, 'code2vecTrainModel.png',show_shapes=True)
         # Actual target word predictions (as strings). Used as a second output layer.
         # Used for predict() and for the evaluation metrics calculations.
-        topk_predicted_words, topk_predicted_words_scores = TopKWordPredictionsLayer(
-            self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION,
-            self.vocabs.target_vocab.get_index_to_word_lookup_table(),
-            name='target_string')(target_index)
+
+        #topk_predicted_words, topk_predicted_words_scores = TopKWordPredictionsLayer(
+        #    self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION,
+        #    self.vocabs.target_vocab.get_index_to_word_lookup_table(),
+        #    name='target_string')(target_index)
 
         # We use another dedicated Keras model for evaluation.
         # The evaluation model outputs the `topk_predicted_words` as a 2nd output.
         # The separation between train and eval models is for efficiency.
-        self.keras_eval_model = keras.Model(
-            inputs=inputs, outputs=[target_index, topk_predicted_words], name="code2vec-keras-model")
+
+        #self.keras_eval_model = keras.Model(
+        #    inputs=inputs, outputs=[target_index, topk_predicted_words], name="code2vec-keras-model")
+        #keras.utils.plot_model(self.keras_eval_model, 'code2vecEvalModel.png', show_shapes=True)
 
         # We use another dedicated Keras function to produce predictions.
         # It have additional outputs than the original model.
         # It is based on the trained layers of the original model and uses their weights.
-        predict_outputs = tuple(KerasPredictionModelOutput(
-            target_index=target_index, code_vectors=code_vectors, attention_weights=attention_weights,
-            topk_predicted_words=topk_predicted_words, topk_predicted_words_scores=topk_predicted_words_scores))
-        self.keras_model_predict_function = K.function(inputs=inputs, outputs=predict_outputs)
+
+        #predict_outputs = tuple(KerasPredictionModelOutput(
+        #    target_index=target_index, code_vectors=code_vectors, attention_weights=attention_weights,
+        #    topk_predicted_words=topk_predicted_words, topk_predicted_words_scores=topk_predicted_words_scores))
+        #self.keras_model_predict_function = K.function(inputs=inputs, outputs=predict_outputs)
 
     def _create_metrics_for_keras_eval_model(self) -> Dict[str, List[Union[Callable, keras.metrics.Metric]]]:
         top_k_acc_metrics = []
@@ -125,14 +131,13 @@ class Code2VecModel(Code2VecModelBase):
         def zero_loss(true_word, topk_predictions):
             return tf.constant(0.0, shape=(), dtype=tf.float32)
 
-        self.keras_train_model.compile(
-            loss='sparse_categorical_crossentropy',
-            optimizer=optimizer)
+        #self.keras_train_model.compile(loss='sparse_categorical_crossentropy',optimizer=optimizer)
+        self.keras_train_model.compile(loss='sparse_categorical_crossentropy', optimizer=optimizer,metrics=['accuracy'])
 
-        self.keras_eval_model.compile(
-            loss={'target_index': 'sparse_categorical_crossentropy', 'target_string': zero_loss},
-            optimizer=optimizer,
-            metrics=self._create_metrics_for_keras_eval_model())
+        #self.keras_eval_model.compile(
+        #    loss={'target_index': 'sparse_categorical_crossentropy', 'target_string': zero_loss},
+        #    optimizer=optimizer,
+        #    metrics=self._create_metrics_for_keras_eval_model())
 
     def _create_data_reader(self, estimator_action: EstimatorAction, repeat_endlessly: bool = False):
         return PathContextReader(
@@ -166,31 +171,60 @@ class Code2VecModel(Code2VecModelBase):
     def train(self):
         # initialize the input pipeline reader
         train_data_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Train)
+        trainingDataset=train_data_input_reader.get_dataset()
 
-        training_history = self.keras_train_model.fit(
-            train_data_input_reader.get_dataset(),
-            steps_per_epoch=self.config.train_steps_per_epoch,
-            epochs=self.config.NUM_TRAIN_EPOCHS,
-            initial_epoch=self.training_status.nr_epochs_trained,
-            verbose=self.config.VERBOSE_MODE,
-            callbacks=self._create_train_callbacks())
+        print("TARGET DICTIONARY")
+        print(self.vocabs.target_vocab.index_to_word)
+        print("TOKEN DICTIONARY")
+        print(self.vocabs.token_vocab.index_to_word)
+        print("PATH DICTIONARY")
+        print(self.vocabs.path_vocab.index_to_word)
 
+        for i in trainingDataset.take(1):
+            print(i)
+
+        #training_history = self.keras_train_model.fit(
+        #    trainingDataset,
+        #    steps_per_epoch=self.config.train_steps_per_epoch,
+        #    epochs=self.config.NUM_TRAIN_EPOCHS,
+        #    initial_epoch=self.training_status.nr_epochs_trained,
+        #    verbose=self.config.VERBOSE_MODE,
+        #    callbacks=self._create_train_callbacks())
+
+        training_history = self.keras_train_model.fit(trainingDataset,steps_per_epoch=self.config.train_steps_per_epoch,epochs=self.config.NUM_TRAIN_EPOCHS,initial_epoch=self.training_status.nr_epochs_trained,verbose=self.config.VERBOSE_MODE)
         self.log(training_history)
+
+        #Just to test: after training I evaluate
+        val_data_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Evaluate)
+        evaluationDataset = val_data_input_reader.get_dataset()
+
+        for i in evaluationDataset.take(1):
+            print(i)
+
+        eval_res = self.keras_train_model.evaluate(evaluationDataset, steps=self.config.test_steps,
+                                                   verbose=self.config.VERBOSE_MODE)
 
     def evaluate(self) -> Optional[ModelEvaluationResults]:
         val_data_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Evaluate)
-        eval_res = self.keras_eval_model.evaluate(
-            val_data_input_reader.get_dataset(),
-            steps=self.config.test_steps,
-            verbose=self.config.VERBOSE_MODE)
-        k = self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION
-        return ModelEvaluationResults(
-            topk_acc=eval_res[3:k+3],
-            subtoken_precision=eval_res[k+3],
-            subtoken_recall=eval_res[k+4],
-            subtoken_f1=eval_res[k+5],
-            loss=eval_res[1]
-        )
+        evaluationDataset = val_data_input_reader.get_dataset()
+
+        for i in evaluationDataset.take(1):
+            print(i)
+
+        eval_res = self.keras_train_model.evaluate(evaluationDataset,steps=self.config.test_steps,verbose=self.config.VERBOSE_MODE)
+
+        #eval_res = self.keras_eval_model.evaluate(
+        #    val_data_input_reader.get_dataset(),
+        #    steps=self.config.test_steps,
+        #    verbose=self.config.VERBOSE_MODE)
+        #k = self.config.TOP_K_WORDS_CONSIDERED_DURING_PREDICTION
+        #return ModelEvaluationResults(
+        #    topk_acc=eval_res[3:k+3],
+        #    subtoken_precision=eval_res[k+3],
+        #    subtoken_recall=eval_res[k+4],
+        #    subtoken_f1=eval_res[k+5],
+        #    loss=eval_res[1]
+        #)
 
     def predict(self, predict_data_rows: Iterable[str]) -> List[ModelPredictionResults]:
         predict_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Predict)
@@ -385,10 +419,14 @@ class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
     def to_model_input_form(self, input_tensors: ReaderInputTensors):
         inputs = (input_tensors.path_source_token_indices, input_tensors.path_indices,
                   input_tensors.path_target_token_indices, input_tensors.context_valid_mask)
-        if self.estimator_action.is_train:
-            targets = input_tensors.target_index
-        else:
-            targets = {'target_index': input_tensors.target_index, 'target_string': input_tensors.target_string}
+
+        #In order to have the same way of input in training and evaluation, I removed a couple of statements bellow
+
+        targets = input_tensors.target_index
+        #if self.estimator_action.is_train:
+        #    targets = input_tensors.target_index
+        #else:
+        #    targets = {'target_index': input_tensors.target_index, 'target_string': input_tensors.target_string}
         if self.estimator_action.is_predict:
             inputs += (input_tensors.path_source_token_strings, input_tensors.path_strings,
                        input_tensors.path_target_token_strings)
@@ -401,8 +439,13 @@ class _KerasModelInputTensorsFormer(ModelInputTensorsFormer):
             path_indices=inputs[1],
             path_target_token_indices=inputs[2],
             context_valid_mask=inputs[3],
-            target_index=targets if self.estimator_action.is_train else targets['target_index'],
-            target_string=targets['target_string'] if not self.estimator_action.is_train else None,
+
+            #I'm changing this for the same reason of the changes in previous function.
+            #target_index=targets if self.estimator_action.is_train else targets['target_index'],
+            #target_string=targets['target_string'] if not self.estimator_action.is_train else None,
+            target_index=targets,
+            target_string=None,
+
             path_source_token_strings=inputs[4] if self.estimator_action.is_predict else None,
             path_strings=inputs[5] if self.estimator_action.is_predict else None,
             path_target_token_strings=inputs[6] if self.estimator_action.is_predict else None

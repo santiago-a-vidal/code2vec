@@ -196,9 +196,19 @@ class Code2VecVocabs:
             VocabType.Path, word_freq_dict.path_to_count, self.config.MAX_PATH_VOCAB_SIZE,
             special_words=self._get_special_words_by_vocab_type(VocabType.Path))
         self.config.log('Created path vocab. size: %d' % self.path_vocab.size)
-        self.target_vocab = Vocab.create_from_freq_dict(
-            VocabType.Target, word_freq_dict.target_to_count, self.config.MAX_TARGET_VOCAB_SIZE,
-            special_words=self._get_special_words_by_vocab_type(VocabType.Target))
+
+
+        #print('*****I need to improve this since right now it is hardcoded******')
+        #labelFrequency = {
+        #    'safe': 2,
+        #    'unsafe': 1
+        #}
+        #self.target_vocab = Vocab.create_from_freq_dict(VocabType.Target, labelFrequency,
+        #                                                self.config.MAX_TARGET_VOCAB_SIZE,
+        #                                                special_words=self._get_special_words_by_vocab_type(
+        #                                                    VocabType.Target))
+
+        self.target_vocab = Vocab.create_from_freq_dict(VocabType.Target, word_freq_dict.target_to_count, self.config.MAX_TARGET_VOCAB_SIZE,special_words=self._get_special_words_by_vocab_type(VocabType.Target))
         self.config.log('Created target vocab. size: %d' % self.target_vocab.size)
 
     def _get_special_words_by_vocab_type(self, vocab_type: VocabType) -> SpecialVocabWordsType:
