@@ -69,7 +69,7 @@ class Code2VecModel(Code2VecModelBase):
         #Esta es la que da la probabilidad de que sea o no un determinado nombre. Por eso el primer parametro es la cantidad de nombres distintos de metodos que hay en el vocabulario.
         #target_index = Dense(self.vocabs.target_vocab.size, use_bias=False, activation='softmax', name='target_index')(code_vectors)
         #Ideally this should be our definition: target_index = Dense(1, use_bias=False, activation='sigmoid', name='target_index')(code_vectors)
-        target_index = Dense(3, use_bias=False, activation='softmax', name='target_index')(code_vectors)
+        target_index = Dense(1, use_bias=False, activation='sigmoid', name='target_index')(code_vectors)
 
         # Wrap the layers into a Keras model, using our subtoken-metrics and the CE loss.
         inputs = [path_source_token_input, path_input, path_target_token_input, context_valid_mask]
@@ -132,7 +132,7 @@ class Code2VecModel(Code2VecModelBase):
             return tf.constant(0.0, shape=(), dtype=tf.float32)
 
         #self.keras_train_model.compile(loss='sparse_categorical_crossentropy',optimizer=optimizer)
-        self.keras_train_model.compile(loss='sparse_categorical_crossentropy', optimizer=optimizer,metrics=['accuracy'])
+        self.keras_train_model.compile(loss='binary_crossentropy', optimizer=optimizer,metrics=['accuracy'])
 
         #self.keras_eval_model.compile(
         #    loss={'target_index': 'sparse_categorical_crossentropy', 'target_string': zero_loss},
@@ -203,6 +203,37 @@ class Code2VecModel(Code2VecModelBase):
 
         eval_res = self.keras_train_model.evaluate(evaluationDataset, steps=self.config.test_steps,
                                                    verbose=self.config.VERBOSE_MODE)
+
+        #Adding this to compute FP, FN, f-measure, etc.
+        from sklearn.metrics import confusion_matrix
+        full = -1
+        for images, labels in evaluationDataset.take(-1):  # only take first element of dataset
+            if(full==-1):
+                numpy_labels = labels.numpy()
+                full=1
+            else:
+                numpy_labels=np.append(numpy_labels,labels.numpy())
+
+        y_pred = self.keras_train_model.predict(evaluationDataset)
+        print(y_pred[:10])
+        y_pred = np.around(y_pred).astype(int)
+        print(y_pred[0:20])
+        tn, fp, fn, tp = confusion_matrix(numpy_labels, y_pred).ravel()
+        print((tn, fp, fn, tp))
+
+        # La précision est intuitivement la capacité du classifieur à ne pas étiqueter comme positif un échantillon négatif
+        # The precision is intuitively the ability of the classifier not to label as positive a sample that is negative
+
+        precision = tp / (tp + fp)  # 99.4%
+        print("Precision score : %d", precision)
+
+        # The recall is intuitively the ability of the classifier to find all the positive samples
+        recall = tp / (tp + fn)  # 98.8%
+        print("Recall score : %d", recall)
+
+        # The F1 score can be interpreted as a weighted average of the precision and recall, where an F1 score reaches its best value at 1 and worst score at 0.
+        F1 = 2 * (precision * recall) / (precision + recall)  # 0.99 ==> 99%
+        print("f-measure score : %d", F1)
 
     def evaluate(self) -> Optional[ModelEvaluationResults]:
         val_data_input_reader = self._create_data_reader(estimator_action=EstimatorAction.Evaluate)

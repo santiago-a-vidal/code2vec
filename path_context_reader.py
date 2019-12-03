@@ -7,6 +7,7 @@ from functools import reduce
 from enum import Enum
 
 
+
 class EstimatorAction(Enum):
     Train = 'train'
     Evaluate = 'evaluate'
@@ -79,6 +80,7 @@ class PathContextReader:
         self.CONTEXT_PADDING = ','.join([self.vocabs.token_vocab.special_words.PAD,
                                          self.vocabs.path_vocab.special_words.PAD,
                                          self.vocabs.token_vocab.special_words.PAD])
+
         self.csv_record_defaults = [[self.vocabs.target_vocab.special_words.OOV]] + \
                                    ([[self.CONTEXT_PADDING]] * self.config.MAX_CONTEXTS)
 
@@ -170,8 +172,8 @@ class PathContextReader:
         if self.estimator_action.is_evaluate:
             cond = any_contexts_is_valid  # scalar
         else:  # training
-            word_is_valid = tf.greater(
-                row_parts.target_index, self.vocabs.target_vocab.word_to_index[self.vocabs.target_vocab.special_words.OOV])  # scalar
+            #word_is_valid = tf.greater(row_parts.target_index, self.vocabs.target_vocab.word_to_index[self.vocabs.target_vocab.special_words.OOV])  # scalar
+            word_is_valid = tf.greater(row_parts.target_index, -1)
             cond = tf.logical_and(word_is_valid, any_contexts_is_valid)  # scalar
 
         return cond  # scalar

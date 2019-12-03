@@ -48,9 +48,14 @@ class Vocab:
         self._index_to_word_lookup_table = None
         self.special_words: SpecialVocabWordsType = special_words
 
-        for index, word in enumerate(chain(common.get_unique_list(special_words.__dict__.values()), words)):
-            self.word_to_index[word] = index
-            self.index_to_word[index] = word
+        if (vocab_type == VocabType.Target):
+            for index, word in enumerate(words):
+                self.word_to_index[word] = index
+                self.index_to_word[index] = word
+        else:
+            for index, word in enumerate(chain(common.get_unique_list(special_words.__dict__.values()), words)):
+                self.word_to_index[word] = index
+                self.index_to_word[index] = word
 
         self.size = len(self.word_to_index)
 
@@ -103,6 +108,7 @@ class Vocab:
             special_words = Namespace()
         words_sorted_by_counts = sorted(word_to_count, key=word_to_count.get, reverse=True)
         words_sorted_by_counts_and_limited = words_sorted_by_counts[:max_size]
+
         return cls(vocab_type, words_sorted_by_counts_and_limited, special_words)
 
     @staticmethod
@@ -122,8 +128,12 @@ class Vocab:
 
     def get_word_to_index_lookup_table(self) -> tf.lookup.StaticHashTable:
         if self._word_to_index_lookup_table is None:
-            self._word_to_index_lookup_table = self._create_word_to_index_lookup_table(
-                self.word_to_index, default_value=self.word_to_index[self.special_words.OOV])
+            if(self.vocab_type == VocabType.Target):
+                self._word_to_index_lookup_table = self._create_word_to_index_lookup_table(self.word_to_index,
+                                                                                           -1)
+            else:
+                self._word_to_index_lookup_table = self._create_word_to_index_lookup_table(self.word_to_index, self.word_to_index[self.special_words.OOV])
+
         return self._word_to_index_lookup_table
 
     def get_index_to_word_lookup_table(self) -> tf.lookup.StaticHashTable:
@@ -209,6 +219,7 @@ class Code2VecVocabs:
         #                                                    VocabType.Target))
 
         self.target_vocab = Vocab.create_from_freq_dict(VocabType.Target, word_freq_dict.target_to_count, self.config.MAX_TARGET_VOCAB_SIZE,special_words=self._get_special_words_by_vocab_type(VocabType.Target))
+
         self.config.log('Created target vocab. size: %d' % self.target_vocab.size)
 
     def _get_special_words_by_vocab_type(self, vocab_type: VocabType) -> SpecialVocabWordsType:
